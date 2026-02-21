@@ -58,6 +58,12 @@ export interface Alert {
 // Generic Database type for Supabase client
 export type Database = {
   public: {
+    Functions: {
+      get_student_by_token: {
+        Args: { p_token: string }
+        Returns: { student: Student; trip: Trip }
+      }
+    }
     Tables: {
       teachers: { Row: Teacher; Insert: Omit<Teacher, 'created_at'>; Update: Partial<Teacher> }
       trips: { Row: Trip; Insert: Omit<Trip, 'id' | 'created_at'>; Update: Partial<Trip> }
