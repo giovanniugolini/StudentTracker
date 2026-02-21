@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useAuthStore } from '@/stores/authStore'
 import { useTrips } from '@/hooks/useTrips'
 import { useStudents } from '@/hooks/useStudents'
+import CsvImport from '@/components/CsvImport'
 import type { Trip } from '@/types/database'
 import type { TripFormData } from '@/hooks/useTrips'
 import type { StudentFormData } from '@/hooks/useStudents'
@@ -279,6 +280,7 @@ export default function DashboardPage() {
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null)
   const [showTripForm, setShowTripForm] = useState(false)
   const [showStudentForm, setShowStudentForm] = useState(false)
+  const [showCsvImport, setShowCsvImport] = useState(false)
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null)
 
   const { students, loading: studentsLoading, addStudent, updateStudent, removeStudent } =
@@ -293,6 +295,12 @@ export default function DashboardPage() {
   const handleAddStudent = async (data: StudentFormData) => {
     await addStudent(data)
     setShowStudentForm(false)
+  }
+
+  const handleCsvImport = async (rows: StudentFormData[]) => {
+    for (const row of rows) {
+      await addStudent(row)
+    }
   }
 
   const handleUpdateStudent = async (data: StudentFormData) => {
@@ -310,6 +318,14 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-slate-100">
+      {/* CSV Import modal */}
+      {showCsvImport && selectedTrip && (
+        <CsvImport
+          onImport={handleCsvImport}
+          onClose={() => setShowCsvImport(false)}
+        />
+      )}
+
       {/* Header */}
       <header className="border-b border-slate-200 bg-white px-6 py-4 shadow-sm">
         <div className="mx-auto flex max-w-5xl items-center gap-3">
@@ -427,6 +443,12 @@ export default function DashboardPage() {
                       className="rounded-lg bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
                     >
                       + Studente
+                    </button>
+                    <button
+                      onClick={() => setShowCsvImport(true)}
+                      className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200"
+                    >
+                      📥 CSV
                     </button>
                     <button
                       onClick={() => {
