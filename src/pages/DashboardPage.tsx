@@ -3,6 +3,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useTrips } from '@/hooks/useTrips'
 import { useStudents } from '@/hooks/useStudents'
 import CsvImport from '@/components/CsvImport'
+import QrCodeModal from '@/components/QrCodeModal'
 import type { Trip } from '@/types/database'
 import type { TripFormData } from '@/hooks/useTrips'
 import type { StudentFormData } from '@/hooks/useStudents'
@@ -221,10 +222,12 @@ function StudentRow({
   student,
   onDelete,
   onEdit,
+  onQr,
 }: {
   student: { id: string; name: string; phone: string | null; consent_signed: boolean; token: string }
   onDelete: (id: string) => void
   onEdit: (id: string) => void
+  onQr: (id: string) => void
 }) {
   const magicLink = `${window.location.origin}/join/${student.token}`
 
@@ -245,6 +248,13 @@ function StudentRow({
         {student.phone && <div className="text-xs text-slate-400">{student.phone}</div>}
       </div>
       <div className="flex gap-1">
+        <button
+          onClick={() => onQr(student.id)}
+          title="Mostra QR code"
+          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+        >
+          ▦
+        </button>
         <button
           onClick={() => navigator.clipboard.writeText(magicLink)}
           title="Copia link studente"
@@ -281,6 +291,7 @@ export default function DashboardPage() {
   const [showTripForm, setShowTripForm] = useState(false)
   const [showStudentForm, setShowStudentForm] = useState(false)
   const [showCsvImport, setShowCsvImport] = useState(false)
+  const [qrStudentId, setQrStudentId] = useState<string | null>(null)
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null)
 
   const { students, loading: studentsLoading, addStudent, updateStudent, removeStudent } =
@@ -325,6 +336,20 @@ export default function DashboardPage() {
           onClose={() => setShowCsvImport(false)}
         />
       )}
+
+      {/* QR Code modal */}
+      {qrStudentId && selectedTrip && (() => {
+        const s = students.find((s) => s.id === qrStudentId)
+        if (!s) return null
+        return (
+          <QrCodeModal
+            studentName={s.name}
+            tripName={selectedTrip.name}
+            token={s.token}
+            onClose={() => setQrStudentId(null)}
+          />
+        )
+      })()}
 
       {/* Header */}
       <header className="border-b border-slate-200 bg-white px-6 py-4 shadow-sm">
@@ -517,6 +542,7 @@ export default function DashboardPage() {
                           student={s}
                           onDelete={handleDeleteStudent}
                           onEdit={setEditingStudentId}
+                          onQr={setQrStudentId}
                         />
                       ))}
                     </div>
