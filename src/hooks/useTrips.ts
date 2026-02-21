@@ -9,7 +9,25 @@ export interface TripFormData {
   radius_km: number
 }
 
-function validateTrip(data: TripFormData): string | null {
+export interface TripWithCount extends Trip {
+  student_count: number
+}
+
+export const STATUS_LABELS: Record<TripStatus, string> = {
+  draft: 'Bozza',
+  active: 'Attiva',
+  completed: 'Completata',
+  cancelled: 'Annullata',
+}
+
+export const STATUS_COLORS: Record<TripStatus, string> = {
+  draft: 'bg-slate-200 text-slate-600',
+  active: 'bg-emerald-100 text-emerald-700',
+  completed: 'bg-blue-100 text-blue-600',
+  cancelled: 'bg-red-100 text-red-500',
+}
+
+export function validateTrip(data: TripFormData): string | null {
   if (!data.name.trim()) return 'Il nome della gita è obbligatorio'
   if (!data.date_start) return 'La data di inizio è obbligatoria'
   if (!data.date_end) return 'La data di fine è obbligatoria'
@@ -21,20 +39,30 @@ function validateTrip(data: TripFormData): string | null {
 }
 
 export function useTrips(teacherId: string | undefined) {
-  const [trips, setTrips] = useState<Trip[]>([])
+  const [trips, setTrips] = useState<TripWithCount[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const fetchTrips = useCallback(async () => {
     if (!teacherId) return
     setLoading(true)
+
+    // Fetch trips with student count in one query
     const { data, error } = await supabase
       .from('trips')
-      .select('*')
+      .select('*, students(count)')
       .eq('teacher_id', teacherId)
       .order('created_at', { ascending: false })
-    if (error) setError(error.message)
-    else setTrips(data ?? [])
+
+    if (error) {
+      setError(error.message)
+    } else {
+      const enriched: TripWithCount[] = (data ?? []).map((t) => ({
+        ...t,
+        student_count: (t.students as unknown as { count: number }[])[0]?.count ?? 0,
+      }))
+      setTrips(enriched)
+    }
     setLoading(false)
   }, [teacherId])
 
@@ -54,23 +82,31 @@ export function useTrips(teacherId: string | undefined) {
         .select()
         .single()
       if (error) throw new Error(error.message)
-      setTrips((prev) => [data, ...prev])
-      return data
+      const newTrip: TripWithCount = { ...data, student_count: 0 }
+      setTrips((prev) => [newTrip, ...prev])
+      return newTrip
     },
     [teacherId],
   )
 
-  const updateTrip = useCallback(async (id: string, updates: Partial<TripFormData & { status: TripStatus }>) => {
-    const { data, error } = await supabase
-      .from('trips')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single()
-    if (error) throw new Error(error.message)
-    setTrips((prev) => prev.map((t) => (t.id === id ? data : t)))
-    return data
-  }, [])
+  const updateTrip = useCallback(
+    async (id: string, updates: Partial<TripFormData & { status: TripStatus }>) => {
+      const { data, error } = await supabase
+        .from('trips')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single()
+      if (error) throw new Error(error.message)
+      setTrips((prev) =>
+        prev.map((t) =>
+          t.id === id ? { ...data, student_count: t.student_count } : t,
+        ),
+      )
+      return data
+    },
+    [],
+  )
 
   const deleteTrip = useCallback(async (id: string) => {
     const { error } = await supabase.from('trips').delete().eq('id', id)
