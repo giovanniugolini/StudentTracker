@@ -251,6 +251,17 @@ export type Database = {
         Args: { p_token: string }
         Returns: Json
       }
+      upsert_position: {
+        Args: {
+          p_student_id: string
+          p_trip_id: string
+          p_lat: number
+          p_lng: number
+          p_accuracy?: number
+          p_battery?: number
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       alert_type: "out_of_zone" | "low_battery" | "gps_lost" | "disconnected"
@@ -378,7 +389,6 @@ export const Constants = {
     },
   },
 } as const
-
 
 // ─── Convenience type aliases ────────────────────────────────────────────────
 export type Teacher  = Database['public']['Tables']['teachers']['Row']

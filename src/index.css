@@ -1,1 +1,12 @@
 @import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+/* Fix Leaflet popup z-index in stacked layouts */
+.leaflet-pane { z-index: 400; }
+.leaflet-top, .leaflet-bottom { z-index: 500; }
+
+@keyframes leaflet-pulse {
+  0%   { transform: scale(1);   opacity: 0.7; }
+  70%  { transform: scale(1.8); opacity: 0; }
+  100% { transform: scale(1.8); opacity: 0; }
+}

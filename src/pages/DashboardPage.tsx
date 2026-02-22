@@ -2,13 +2,18 @@ import { useState } from 'react'
 import { useAuthStore } from '@/stores/authStore'
 import { useTrips, validateTrip, STATUS_LABELS, STATUS_COLORS } from '@/hooks/useTrips'
 import { useStudents } from '@/hooks/useStudents'
+import { useTripPositions } from '@/hooks/useTripPositions'
 import CsvImport from '@/components/CsvImport'
 import QrCodeModal from '@/components/QrCodeModal'
+import TripMap from '@/components/TripMap'
+import type { StudentMarkerData } from '@/components/TripMap'
 import type { TripWithCount } from '@/hooks/useTrips'
 import type { TripFormData } from '@/hooks/useTrips'
 import type { StudentFormData } from '@/hooks/useStudents'
 import { EMPTY_STUDENT_FORM } from '@/hooks/useStudents'
 import type { TripStatus } from '@/types/database'
+
+type PanelTab = 'students' | 'map'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -242,12 +247,16 @@ export default function DashboardPage() {
   const [qrStudentId, setQrStudentId] = useState<string | null>(null)
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null)
   const [statusLoading, setStatusLoading] = useState(false)
+  const [panelTab, setPanelTab] = useState<PanelTab>('students')
 
   const { students, loading: studentsLoading, addStudent, updateStudent, removeStudent } =
     useStudents(selectedTrip?.id)
 
   // Keep selectedTrip in sync when trips list updates
   const syncedTrip = trips.find((t) => t.id === selectedTrip?.id) ?? null
+
+  // Live GPS positions broadcast by students via Realtime
+  const livePositions = useTripPositions(syncedTrip?.id)
 
   const handleCreateTrip = async (data: TripFormData) => {
     const trip = await createTrip(data)
@@ -296,6 +305,19 @@ export default function DashboardPage() {
   const editingTrip = trips.find((t) => t.id === editingTripId)
 
   const consentCount = students.filter((s) => s.consent_signed).length
+
+  // Build map markers from students that have a live position
+  const mapStudents: StudentMarkerData[] = students
+    .filter((s) => s.id in livePositions)
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      position: { lat: livePositions[s.id].lat, lng: livePositions[s.id].lng },
+      battery_level: livePositions[s.id].battery_level,
+    }))
+
+  // Mock teacher position — replaced by real GPS in T2.7
+  const mockTeacherPos = { lat: 41.9028, lng: 12.4964 }
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -462,56 +484,104 @@ export default function DashboardPage() {
                 {/* Consent progress bar */}
                 {!studentsLoading && <ConsentBar signed={consentCount} total={students.length} />}
 
-                {/* Add student toolbar */}
-                <div className="mb-4 flex gap-2">
-                  <button onClick={() => setShowStudentForm(true)}
-                    className="rounded-lg bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600">
-                    + Studente
+                {/* Tab switcher */}
+                <div className="mb-4 flex rounded-lg bg-slate-100 p-0.5">
+                  <button
+                    onClick={() => setPanelTab('students')}
+                    className={`flex-1 rounded-md py-1.5 text-xs font-semibold transition ${
+                      panelTab === 'students'
+                        ? 'bg-white text-slate-800 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    👥 Studenti ({students.length})
                   </button>
-                  <button onClick={() => setShowCsvImport(true)}
-                    className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200">
-                    📥 CSV
+                  <button
+                    onClick={() => setPanelTab('map')}
+                    className={`flex-1 rounded-md py-1.5 text-xs font-semibold transition ${
+                      panelTab === 'map'
+                        ? 'bg-white text-slate-800 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    🗺 Mappa
+                    {mapStudents.length > 0 && (
+                      <span className="ml-1 rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] text-white">
+                        {mapStudents.length}
+                      </span>
+                    )}
                   </button>
                 </div>
 
-                {/* Add/Edit student form */}
-                {(showStudentForm || editingStudentId) && (
-                  <div className="mb-4 rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200">
-                    <h3 className="mb-3 text-sm font-semibold text-slate-700">
-                      {editingStudentId ? 'Modifica studente' : 'Aggiungi studente'}
-                    </h3>
-                    <StudentForm
-                      initial={editingStudent ? {
-                        name: editingStudent.name,
-                        phone: editingStudent.phone ?? '',
-                        emergency_contact: editingStudent.emergency_contact ?? '',
-                        consent_signed: editingStudent.consent_signed,
-                      } : undefined}
-                      onSubmit={editingStudentId ? handleUpdateStudent : handleAddStudent}
-                      onCancel={() => { setShowStudentForm(false); setEditingStudentId(null) }}
-                      submitLabel={editingStudentId ? 'Salva modifiche' : 'Aggiungi'}
-                    />
-                  </div>
+                {panelTab === 'students' && (
+                  <>
+                    {/* Add student toolbar */}
+                    <div className="mb-4 flex gap-2">
+                      <button onClick={() => setShowStudentForm(true)}
+                        className="rounded-lg bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600">
+                        + Studente
+                      </button>
+                      <button onClick={() => setShowCsvImport(true)}
+                        className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200">
+                        📥 CSV
+                      </button>
+                    </div>
+
+                    {/* Add/Edit student form */}
+                    {(showStudentForm || editingStudentId) && (
+                      <div className="mb-4 rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                        <h3 className="mb-3 text-sm font-semibold text-slate-700">
+                          {editingStudentId ? 'Modifica studente' : 'Aggiungi studente'}
+                        </h3>
+                        <StudentForm
+                          initial={editingStudent ? {
+                            name: editingStudent.name,
+                            phone: editingStudent.phone ?? '',
+                            emergency_contact: editingStudent.emergency_contact ?? '',
+                            consent_signed: editingStudent.consent_signed,
+                          } : undefined}
+                          onSubmit={editingStudentId ? handleUpdateStudent : handleAddStudent}
+                          onCancel={() => { setShowStudentForm(false); setEditingStudentId(null) }}
+                          submitLabel={editingStudentId ? 'Salva modifiche' : 'Aggiungi'}
+                        />
+                      </div>
+                    )}
+
+                    {/* Students list */}
+                    {studentsLoading ? (
+                      <div className="py-8 text-center text-sm text-slate-400">Caricamento…</div>
+                    ) : students.length === 0 ? (
+                      <div className="py-8 text-center">
+                        <div className="text-4xl">👥</div>
+                        <p className="mt-2 text-sm font-medium text-slate-500">Nessuno studente</p>
+                        <p className="mt-1 text-xs text-slate-400">Aggiungi studenti con i pulsanti qui sopra</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {students.map((s) => (
+                          <StudentRow key={s.id} student={s}
+                            onDelete={handleDeleteStudent}
+                            onEdit={setEditingStudentId}
+                            onQr={setQrStudentId}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
 
-                {/* Students list */}
-                {studentsLoading ? (
-                  <div className="py-8 text-center text-sm text-slate-400">Caricamento…</div>
-                ) : students.length === 0 ? (
-                  <div className="py-8 text-center">
-                    <div className="text-4xl">👥</div>
-                    <p className="mt-2 text-sm font-medium text-slate-500">Nessuno studente</p>
-                    <p className="mt-1 text-xs text-slate-400">Aggiungi studenti con i pulsanti qui sopra</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {students.map((s) => (
-                      <StudentRow key={s.id} student={s}
-                        onDelete={handleDeleteStudent}
-                        onEdit={setEditingStudentId}
-                        onQr={setQrStudentId}
-                      />
-                    ))}
+                {panelTab === 'map' && (
+                  <div className="overflow-hidden rounded-xl" style={{ height: '480px' }}>
+                    {mapStudents.length === 0 && (
+                      <div className="absolute z-10 left-1/2 -translate-x-1/2 mt-3 rounded-lg bg-white/90 px-3 py-1.5 text-xs text-slate-500 shadow ring-1 ring-slate-200 pointer-events-none">
+                        In attesa delle posizioni GPS degli studenti…
+                      </div>
+                    )}
+                    <TripMap
+                      teacherPos={mockTeacherPos}
+                      radiusKm={syncedTrip.radius_km}
+                      students={mapStudents}
+                    />
                   </div>
                 )}
               </div>

@@ -1,14 +1,28 @@
 import { Navigate } from 'react-router'
 import { useStudentStore } from '@/stores/studentStore'
+import { useGeolocation } from '@/hooks/useGeolocation'
+import { usePositionBroadcast } from '@/hooks/usePositionBroadcast'
 
 export default function StudentPage() {
   const { session, leave } = useStudentStore()
+  const geo = useGeolocation()
+
+  usePositionBroadcast({
+    studentId: session?.student.id ?? '',
+    tripId: session?.trip.id ?? '',
+    position: geo.position,
+    accuracy: geo.accuracy,
+  })
 
   if (!session) {
     return <Navigate to="/login" replace />
   }
 
   const { student, trip } = session
+
+  // ── GPS status helpers ──────────────────────────────────────────────────────
+  const gpsReady = geo.position !== null && geo.error === null
+  const gpsWaiting = geo.watching && geo.position === null && geo.error === null
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-slate-100 px-4">
@@ -38,14 +52,53 @@ export default function StudentPage() {
           </div>
         </div>
 
-        {/* GPS status — placeholder, verrà implementato in Sprint 2 */}
-        <div className="mb-6 flex items-center gap-3 rounded-xl bg-emerald-50 p-4 ring-1 ring-emerald-100">
-          <div className="h-3 w-3 animate-pulse rounded-full bg-emerald-400" />
-          <div>
-            <div className="text-sm font-semibold text-emerald-800">Condivisione attiva</div>
-            <div className="text-xs text-emerald-600">GPS verrà attivato nella prossima versione</div>
+        {/* GPS status */}
+        {!geo.supported && (
+          <div className="mb-6 rounded-xl bg-slate-100 p-4 ring-1 ring-slate-200">
+            <div className="text-sm font-semibold text-slate-600">📵 GPS non supportato</div>
+            <div className="mt-0.5 text-xs text-slate-500">
+              Questo dispositivo non supporta la geolocalizzazione.
+            </div>
           </div>
-        </div>
+        )}
+
+        {geo.supported && geo.error && (
+          <div className="mb-6 rounded-xl bg-red-50 p-4 ring-1 ring-red-200">
+            <div className="text-sm font-semibold text-red-700">⚠ GPS non disponibile</div>
+            <div className="mt-0.5 text-xs text-red-600">{geo.error}</div>
+          </div>
+        )}
+
+        {geo.supported && !geo.error && gpsWaiting && (
+          <div className="mb-6 flex items-center gap-3 rounded-xl bg-amber-50 p-4 ring-1 ring-amber-100">
+            <div className="h-3 w-3 animate-pulse rounded-full bg-amber-400" />
+            <div>
+              <div className="text-sm font-semibold text-amber-800">Ricerca segnale GPS…</div>
+              <div className="text-xs text-amber-600">Attendi la prima correzione di posizione</div>
+            </div>
+          </div>
+        )}
+
+        {geo.supported && !geo.error && gpsReady && geo.position && (
+          <div className="mb-6 rounded-xl bg-emerald-50 p-4 ring-1 ring-emerald-100">
+            <div className="mb-2 flex items-center gap-2">
+              <div className="h-3 w-3 animate-pulse rounded-full bg-emerald-400" />
+              <span className="text-sm font-semibold text-emerald-800">GPS attivo</span>
+            </div>
+            <div className="grid grid-cols-2 gap-1 font-mono text-xs text-emerald-700">
+              <span className="text-emerald-500">Lat</span>
+              <span>{geo.position.lat.toFixed(6)}</span>
+              <span className="text-emerald-500">Lng</span>
+              <span>{geo.position.lng.toFixed(6)}</span>
+              {geo.accuracy !== null && (
+                <>
+                  <span className="text-emerald-500">Precisione</span>
+                  <span>±{geo.accuracy} m</span>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         <button
           onClick={leave}
