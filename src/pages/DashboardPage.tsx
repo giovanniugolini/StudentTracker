@@ -155,6 +155,37 @@ function AlertLogPanel({ log }: { log: AlertLogEntry[] }) {
   )
 }
 
+// ─── Zone Stats Bar ───────────────────────────────────────────────────────────
+
+function ZoneStatsBar({
+  total,
+  online,
+  inside,
+  outside,
+}: {
+  total: number
+  online: number
+  inside: number
+  outside: number
+}) {
+  const stats = [
+    { label: 'Totale', value: total, color: 'text-slate-700', bg: 'bg-slate-100' },
+    { label: 'Online', value: online, color: 'text-emerald-700', bg: 'bg-emerald-50' },
+    { label: 'Nel raggio', value: inside, color: 'text-blue-700', bg: 'bg-blue-50' },
+    { label: 'Fuori zona', value: outside, color: outside > 0 ? 'text-red-700' : 'text-slate-400', bg: outside > 0 ? 'bg-red-50' : 'bg-slate-50', pulse: outside > 0 },
+  ]
+  return (
+    <div className="grid grid-cols-4 gap-2">
+      {stats.map((s) => (
+        <div key={s.label} className={`rounded-xl px-3 py-2 text-center ring-1 ring-inset ring-slate-200 ${s.bg} ${s.pulse ? 'animate-pulse' : ''}`}>
+          <div className={`text-lg font-bold tabular-nums ${s.color}`}>{s.value}</div>
+          <div className="text-[10px] font-medium text-slate-500">{s.label}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmt(iso: string) {
@@ -860,6 +891,14 @@ export default function DashboardPage() {
                         {simulating ? '⏹ Ferma simulazione GPS' : '🎮 Simula posizioni studenti (test)'}
                       </button>
                     )}
+
+                    {/* Zone stats counter */}
+                    <ZoneStatsBar
+                      total={students.length}
+                      online={onlineCount}
+                      inside={onlineCount - outsideCount}
+                      outside={outsideCount}
+                    />
 
                     <div className="relative overflow-hidden rounded-xl" style={{ height: '460px' }}>
                       {mapStudents.length === 0 && (

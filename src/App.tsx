@@ -6,6 +6,7 @@ import LoginPage from '@/pages/LoginPage'
 import DashboardPage from '@/pages/DashboardPage'
 import JoinPage from '@/pages/JoinPage'
 import StudentPage from '@/pages/StudentPage'
+import InstallBanner from '@/components/InstallBanner'
 
 function AppRoutes() {
   const { initialize } = useAuthStore()
@@ -37,6 +38,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AppRoutes />
+      <InstallBanner />
     </BrowserRouter>
   )
 }
