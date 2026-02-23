@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuthStore } from '@/stores/authStore'
 import { useTrips, validateTrip, STATUS_LABELS, STATUS_COLORS } from '@/hooks/useTrips'
 import { useStudents } from '@/hooks/useStudents'
@@ -405,10 +405,63 @@ export default function DashboardPage() {
   // Teacher position: real GPS if available, fallback to Rome for initial render
   const teacherPos = teacherGeo.position ?? { lat: 41.9028, lng: 12.4964 }
 
+  // ── Simulation mode (testing on single device) ────────────────────────────
+  const [simulating, setSimulating] = useState(false)
+  const [simPositions, setSimPositions] = useState<Record<string, { lat: number; lng: number; accuracy: number | null; battery_level: number | null; updatedAt: Date }>>({})
+  const simInitRef = useRef(false)
+
+  useEffect(() => {
+    if (!simulating || students.length === 0) return
+
+    // Place each student at a random angle & distance from the teacher
+    if (!simInitRef.current) {
+      simInitRef.current = true
+      const init: typeof simPositions = {}
+      students.forEach((s, i) => {
+        const angle = (i / students.length) * 2 * Math.PI
+        const r = 0.00025 * (1 + Math.random())  // ~30–55 m
+        init[s.id] = {
+          lat: teacherPos.lat + Math.sin(angle) * r,
+          lng: teacherPos.lng + Math.cos(angle) * r,
+          accuracy: 10, battery_level: 80, updatedAt: new Date(),
+        }
+      })
+      setSimPositions(init)
+    }
+
+    const id = setInterval(() => {
+      setSimPositions((prev) => {
+        const next = { ...prev }
+        students.forEach((s, i) => {
+          const cur = next[s.id]
+          if (!cur) return
+          // First student occasionally wanders far (to trigger alert)
+          const drift = i === 0 && Math.random() > 0.80 ? 0.0035 : 0.00015
+          next[s.id] = {
+            ...cur,
+            lat: cur.lat + (Math.random() - 0.5) * drift,
+            lng: cur.lng + (Math.random() - 0.5) * drift,
+            updatedAt: new Date(),
+          }
+        })
+        return next
+      })
+    }, 2000)
+
+    return () => clearInterval(id)
+  }, [simulating, students, teacherPos])
+
+  useEffect(() => {
+    if (!simulating) { setSimPositions({}); simInitRef.current = false }
+  }, [simulating])
+
+  // Real positions take priority; simulated fill in for students without GPS
+  const effectivePositions = simulating ? { ...simPositions, ...livePositions } : livePositions
+
   // Zone alerts (T3.1)
   const { activeAlerts, alertLog, dismissAlert } = useZoneAlerts({
     students,
-    positions: livePositions,
+    positions: effectivePositions,
     teacherPos,
     radiusKm: syncedTrip?.radius_km ?? 0.5,
   })
@@ -461,14 +514,14 @@ export default function DashboardPage() {
 
   const consentCount = students.filter((s) => s.consent_signed).length
 
-  // Build map markers from students that have a live position
+  // Build map markers from students that have a live (or simulated) position
   const mapStudents: StudentMarkerData[] = students
-    .filter((s) => s.id in livePositions)
+    .filter((s) => s.id in effectivePositions)
     .map((s) => ({
       id: s.id,
       name: s.name,
-      position: { lat: livePositions[s.id].lat, lng: livePositions[s.id].lng },
-      battery_level: livePositions[s.id].battery_level,
+      position: { lat: effectivePositions[s.id].lat, lng: effectivePositions[s.id].lng },
+      battery_level: effectivePositions[s.id].battery_level,
     }))
 
   // Counts for header badges
@@ -745,7 +798,7 @@ export default function DashboardPage() {
                     ) : (
                       <div className="space-y-2">
                         {students.map((s) => {
-                          const pos = livePositions[s.id]
+                          const pos = effectivePositions[s.id]
                           const distKm = pos
                             ? haversineKm(teacherPos.lat, teacherPos.lng, pos.lat, pos.lng)
                             : undefined
@@ -768,6 +821,20 @@ export default function DashboardPage() {
                   <div className="space-y-3">
                     {/* Teacher GPS status bar */}
                     <TeacherGpsBar geo={teacherGeo} />
+
+                    {/* Simulation toggle */}
+                    {students.length > 0 && (
+                      <button
+                        onClick={() => setSimulating((s) => !s)}
+                        className={`w-full rounded-lg py-2 text-xs font-semibold transition ${
+                          simulating
+                            ? 'bg-amber-100 text-amber-800 ring-1 ring-amber-300 hover:bg-amber-200'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {simulating ? '⏹ Ferma simulazione GPS' : '🎮 Simula posizioni studenti (test)'}
+                      </button>
+                    )}
 
                     <div className="relative overflow-hidden rounded-xl" style={{ height: '460px' }}>
                       {mapStudents.length === 0 && (
