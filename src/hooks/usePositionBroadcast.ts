@@ -107,8 +107,8 @@ export function usePositionBroadcast({
         p_trip_id: tripId,
         p_lat: position.lat,
         p_lng: position.lng,
-        p_accuracy: accuracy,
-        p_battery: batteryLevel ?? null,
+        p_accuracy: accuracy ?? undefined,
+        p_battery: batteryLevel ?? undefined,
       })
       .then(({ error }) => {
         if (error) console.warn('[usePositionBroadcast] DB write failed:', error.message)

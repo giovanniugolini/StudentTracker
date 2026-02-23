@@ -3,6 +3,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useTrips, validateTrip, STATUS_LABELS, STATUS_COLORS } from '@/hooks/useTrips'
 import { useStudents } from '@/hooks/useStudents'
 import { useTripPositions } from '@/hooks/useTripPositions'
+import { useGeolocation } from '@/hooks/useGeolocation'
 import CsvImport from '@/components/CsvImport'
 import QrCodeModal from '@/components/QrCodeModal'
 import TripMap from '@/components/TripMap'
@@ -12,8 +13,53 @@ import type { TripFormData } from '@/hooks/useTrips'
 import type { StudentFormData } from '@/hooks/useStudents'
 import { EMPTY_STUDENT_FORM } from '@/hooks/useStudents'
 import type { TripStatus } from '@/types/database'
+import type { GeoState } from '@/hooks/useGeolocation'
 
 type PanelTab = 'students' | 'map'
+
+// ─── Teacher GPS status bar ────────────────────────────────────────────────────
+
+function TeacherGpsBar({ geo }: { geo: GeoState }) {
+  if (!geo.supported) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-500 ring-1 ring-slate-200">
+        <span>📵</span>
+        <span>GPS non supportato — posizione docente non disponibile</span>
+      </div>
+    )
+  }
+
+  if (geo.error) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600 ring-1 ring-red-200">
+        <span>⚠</span>
+        <span>{geo.error}</span>
+      </div>
+    )
+  }
+
+  if (!geo.position) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 ring-1 ring-amber-100">
+        <span className="h-2 w-2 animate-pulse rounded-full bg-amber-400" />
+        <span>Ricerca segnale GPS docente…</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700 ring-1 ring-emerald-100">
+      <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+      <span className="font-medium">Docente</span>
+      <span className="font-mono">
+        {geo.position.lat.toFixed(5)}, {geo.position.lng.toFixed(5)}
+      </span>
+      {geo.accuracy !== null && (
+        <span className="ml-auto text-emerald-500">±{geo.accuracy} m</span>
+      )}
+    </div>
+  )
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -258,6 +304,9 @@ export default function DashboardPage() {
   // Live GPS positions broadcast by students via Realtime
   const livePositions = useTripPositions(syncedTrip?.id)
 
+  // Teacher's real GPS position (T2.7)
+  const teacherGeo = useGeolocation()
+
   const handleCreateTrip = async (data: TripFormData) => {
     const trip = await createTrip(data)
     setShowTripForm(false)
@@ -316,8 +365,8 @@ export default function DashboardPage() {
       battery_level: livePositions[s.id].battery_level,
     }))
 
-  // Mock teacher position — replaced by real GPS in T2.7
-  const mockTeacherPos = { lat: 41.9028, lng: 12.4964 }
+  // Teacher position: real GPS if available, fallback to Rome for initial render
+  const teacherPos = teacherGeo.position ?? { lat: 41.9028, lng: 12.4964 }
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -571,17 +620,22 @@ export default function DashboardPage() {
                 )}
 
                 {panelTab === 'map' && (
-                  <div className="overflow-hidden rounded-xl" style={{ height: '480px' }}>
-                    {mapStudents.length === 0 && (
-                      <div className="absolute z-10 left-1/2 -translate-x-1/2 mt-3 rounded-lg bg-white/90 px-3 py-1.5 text-xs text-slate-500 shadow ring-1 ring-slate-200 pointer-events-none">
-                        In attesa delle posizioni GPS degli studenti…
-                      </div>
-                    )}
-                    <TripMap
-                      teacherPos={mockTeacherPos}
-                      radiusKm={syncedTrip.radius_km}
-                      students={mapStudents}
-                    />
+                  <div className="space-y-3">
+                    {/* Teacher GPS status bar */}
+                    <TeacherGpsBar geo={teacherGeo} />
+
+                    <div className="relative overflow-hidden rounded-xl" style={{ height: '460px' }}>
+                      {mapStudents.length === 0 && (
+                        <div className="pointer-events-none absolute left-1/2 z-10 mt-3 -translate-x-1/2 rounded-lg bg-white/90 px-3 py-1.5 text-xs text-slate-500 shadow ring-1 ring-slate-200">
+                          In attesa delle posizioni GPS degli studenti…
+                        </div>
+                      )}
+                      <TripMap
+                        teacherPos={teacherPos}
+                        radiusKm={syncedTrip.radius_km}
+                        students={mapStudents}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
