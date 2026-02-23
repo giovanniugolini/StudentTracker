@@ -17,6 +17,7 @@ import type { TripStatus } from '@/types/database'
 import type { GeoState } from '@/hooks/useGeolocation'
 import type { ZoneAlert, AlertLogEntry } from '@/hooks/useZoneAlerts'
 import { haversineKm } from '@/lib/geo'
+import { supabase } from '@/lib/supabase'
 
 type PanelTab = 'students' | 'map' | 'log'
 
@@ -712,6 +713,14 @@ export default function DashboardPage() {
                         Annulla
                       </button>
                     )}
+                    <button onClick={async () => {
+                      if (!confirm('Cancellare tutte le posizioni registrate per questa gita? (GDPR — irreversibile)')) return
+                      const { error } = await supabase.rpc('delete_trip_positions', { p_trip_id: syncedTrip.id })
+                      if (error) alert('Errore: ' + error.message)
+                      else alert('Posizioni cancellate.')
+                    }} className="rounded-lg bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-600 hover:bg-amber-100" title="Cancella posizioni (GDPR)">
+                      🗑 pos.
+                    </button>
                     <button onClick={() => {
                       if (confirm('Eliminare questa gita e tutti i suoi studenti?'))
                         deleteTrip(syncedTrip.id).then(() => setSelectedTrip(null))

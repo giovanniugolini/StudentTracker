@@ -1,0 +1,12 @@
+Nome,Cognome,Telefono,Contatto Emergenza,Consenso
+Marco,Ferrari,333 1234567,Papà Ferrari: 347 9876543,Si
+Sofia,Russo,340 2345678,Mamma Russo: 320 8765432,Sì
+Luca,Bianchi,,,No
+Giulia,Esposito,338 3456789,Nonna Esposito: 333 1112233,Si
+Alessandro,Romano,347 4567890,Papà Romano: 349 2223344,1
+Chiara,Colombo,,Mamma Colombo: 320 3334455,Si
+Davide,Ricci,339 5678901,,No
+Martina,Marino,320 6789012,Genitore Marino: 347 4445566,Sì
+Pietro,Greco,,,
+Anna,De Luca,333 7890123,Papà De Luca: 338 5556677,Si
+Errore,,abc-telefono-non-valido,,Si

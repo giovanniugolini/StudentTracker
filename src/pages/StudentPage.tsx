@@ -1,26 +1,134 @@
+import { useState } from 'react'
 import { Navigate } from 'react-router'
 import { useStudentStore } from '@/stores/studentStore'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import { usePositionBroadcast } from '@/hooks/usePositionBroadcast'
 
+// ─── GDPR Consent Screen ───────────────────────────────────────────────────────
+
+function ConsentScreen({
+  studentName,
+  tripName,
+  onAccept,
+  onDecline,
+}: {
+  studentName: string
+  tripName: string
+  onAccept: () => void
+  onDecline: () => void
+}) {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center bg-slate-100 px-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-sm ring-1 ring-slate-200">
+        <div className="mb-6 text-center">
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-red-500 text-3xl shadow-lg">
+            🔒
+          </div>
+          <h1 className="text-lg font-bold text-slate-800">Informativa sulla privacy</h1>
+          <p className="mt-1 text-xs text-slate-500">
+            Ciao <strong>{studentName}</strong> — gita <strong>{tripName}</strong>
+          </p>
+        </div>
+
+        <div className="mb-5 space-y-3 text-xs text-slate-600">
+          <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+            <div className="mb-1 font-semibold text-slate-700">📊 Dati raccolti</div>
+            <ul className="space-y-0.5 text-slate-500">
+              <li>• Posizione GPS (aggiornata ogni ~30 secondi)</li>
+              <li>• Livello batteria del dispositivo</li>
+            </ul>
+          </div>
+
+          <div className="rounded-xl bg-blue-50 p-3 ring-1 ring-blue-100">
+            <div className="mb-1 font-semibold text-blue-700">🎯 Finalità</div>
+            <p className="text-blue-600">
+              Monitoraggio della sicurezza durante la gita scolastica. I dati
+              sono visibili <strong>solo al tuo insegnante</strong>.
+            </p>
+          </div>
+
+          <div className="rounded-xl bg-amber-50 p-3 ring-1 ring-amber-100">
+            <div className="mb-1 font-semibold text-amber-700">🗓 Conservazione</div>
+            <p className="text-amber-600">
+              I dati di posizione vengono eliminati automaticamente
+              <strong> entro 30 giorni</strong> dalla fine della gita.
+            </p>
+          </div>
+
+          <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+            <div className="mb-1 font-semibold text-slate-700">⚖️ I tuoi diritti</div>
+            <p className="text-slate-500">
+              Puoi revocare il consenso in qualsiasi momento uscendo dalla gita.
+              Puoi richiedere la cancellazione dei dati al tuo insegnante.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            onClick={onDecline}
+            className="flex-1 rounded-xl bg-slate-100 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-200"
+          >
+            Non accetto
+          </button>
+          <button
+            onClick={onAccept}
+            className="flex-1 rounded-xl bg-blue-500 py-2.5 text-sm font-semibold text-white hover:bg-blue-600"
+          >
+            Accetto ✓
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function StudentPage() {
   const { session, leave } = useStudentStore()
-  const geo = useGeolocation()
+
+  // Consent persisted in localStorage per student — GPS only starts after opt-in
+  const consentKey = `gdpr-consent-${session?.student.id ?? ''}`
+  const [consented, setConsented] = useState(
+    () => localStorage.getItem(consentKey) === 'true',
+  )
+  const [declined, setDeclined] = useState(false)
+
+  const geo = useGeolocation(consented)
 
   const { bufferedCount } = usePositionBroadcast({
     studentId: session?.student.id ?? '',
     tripId: session?.trip.id ?? '',
-    position: geo.position,
-    accuracy: geo.accuracy,
+    position: consented ? geo.position : null,
+    accuracy: consented ? geo.accuracy : null,
   })
 
-  if (!session) {
-    return <Navigate to="/login" replace />
-  }
+  if (!session) return <Navigate to="/login" replace />
 
   const { student, trip } = session
 
-  // ── GPS status helpers ──────────────────────────────────────────────────────
+  const handleAccept = () => {
+    localStorage.setItem(consentKey, 'true')
+    setConsented(true)
+  }
+
+  const handleDecline = () => {
+    setDeclined(true)
+  }
+
+  // Show consent screen on first visit
+  if (!consented && !declined) {
+    return (
+      <ConsentScreen
+        studentName={student.name}
+        tripName={trip.name}
+        onAccept={handleAccept}
+        onDecline={handleDecline}
+      />
+    )
+  }
+
   const gpsReady = geo.position !== null && geo.error === null
   const gpsWaiting = geo.watching && geo.position === null && geo.error === null
 
@@ -33,7 +141,11 @@ export default function StudentPage() {
             📍
           </div>
           <h1 className="text-xl font-bold text-slate-800">Student Tracker</h1>
-          <p className="mt-1 text-sm text-slate-500">La tua posizione è condivisa con il professore</p>
+          <p className="mt-1 text-sm text-slate-500">
+            {consented
+              ? 'La tua posizione è condivisa con il professore'
+              : 'Condivisione posizione disattivata'}
+          </p>
         </div>
 
         {/* Student info */}
@@ -52,70 +164,92 @@ export default function StudentPage() {
           </div>
         </div>
 
-        {/* GPS status */}
-        {!geo.supported && (
-          <div className="mb-6 rounded-xl bg-slate-100 p-4 ring-1 ring-slate-200">
-            <div className="text-sm font-semibold text-slate-600">📵 GPS non supportato</div>
-            <div className="mt-0.5 text-xs text-slate-500">
-              Questo dispositivo non supporta la geolocalizzazione.
+        {/* Declined consent notice */}
+        {declined && !consented && (
+          <div className="mb-4 rounded-xl bg-amber-50 p-4 ring-1 ring-amber-200">
+            <div className="text-sm font-semibold text-amber-800">⚠ GPS disattivato</div>
+            <div className="mt-1 text-xs text-amber-600">
+              Hai scelto di non condividere la posizione. Il professore non
+              potrà monitorarti sulla mappa.
             </div>
+            <button
+              onClick={() => setDeclined(false)}
+              className="mt-3 w-full rounded-lg bg-amber-100 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-200"
+            >
+              Rivedi la scelta
+            </button>
           </div>
         )}
 
-        {geo.supported && geo.error && (
-          <div className="mb-6 rounded-xl bg-red-50 p-4 ring-1 ring-red-200">
-            <div className="text-sm font-semibold text-red-700">⚠ GPS non disponibile</div>
-            <div className="mt-0.5 text-xs text-red-600">{geo.error}</div>
-          </div>
-        )}
-
-        {geo.supported && !geo.error && gpsWaiting && (
-          <div className="mb-6 flex items-center gap-3 rounded-xl bg-amber-50 p-4 ring-1 ring-amber-100">
-            <div className="h-3 w-3 animate-pulse rounded-full bg-amber-400" />
-            <div>
-              <div className="text-sm font-semibold text-amber-800">Ricerca segnale GPS…</div>
-              <div className="text-xs text-amber-600">Attendi la prima correzione di posizione</div>
-            </div>
-          </div>
-        )}
-
-        {geo.supported && !geo.error && gpsReady && geo.position && (
-          <div className="mb-4 rounded-xl bg-emerald-50 p-4 ring-1 ring-emerald-100">
-            <div className="mb-2 flex items-center gap-2">
-              <div className="h-3 w-3 animate-pulse rounded-full bg-emerald-400" />
-              <span className="text-sm font-semibold text-emerald-800">GPS attivo</span>
-              {geo.mode === 'power-save' && (
-                <span className="ml-auto rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
-                  🔋 risparmio energetico
-                </span>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-1 font-mono text-xs text-emerald-700">
-              <span className="text-emerald-500">Lat</span>
-              <span>{geo.position.lat.toFixed(6)}</span>
-              <span className="text-emerald-500">Lng</span>
-              <span>{geo.position.lng.toFixed(6)}</span>
-              {geo.accuracy !== null && (
-                <>
-                  <span className="text-emerald-500">Precisione</span>
-                  <span>±{geo.accuracy} m</span>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Offline buffer indicator */}
-        {bufferedCount > 0 && (
-          <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 ring-1 ring-amber-100">
-            <span className="text-base">📡</span>
-            <div>
-              <div className="text-xs font-semibold text-amber-800">Offline</div>
-              <div className="text-xs text-amber-600">
-                {bufferedCount} {bufferedCount === 1 ? 'posizione in coda' : 'posizioni in coda'} — invio al ripristino
+        {/* GPS status (only when consented) */}
+        {consented && (
+          <>
+            {!geo.supported && (
+              <div className="mb-4 rounded-xl bg-slate-100 p-4 ring-1 ring-slate-200">
+                <div className="text-sm font-semibold text-slate-600">📵 GPS non supportato</div>
+                <div className="mt-0.5 text-xs text-slate-500">
+                  Questo dispositivo non supporta la geolocalizzazione.
+                </div>
               </div>
-            </div>
-          </div>
+            )}
+
+            {geo.supported && geo.error && (
+              <div className="mb-4 rounded-xl bg-red-50 p-4 ring-1 ring-red-200">
+                <div className="text-sm font-semibold text-red-700">⚠ GPS non disponibile</div>
+                <div className="mt-0.5 text-xs text-red-600">{geo.error}</div>
+              </div>
+            )}
+
+            {geo.supported && !geo.error && gpsWaiting && (
+              <div className="mb-4 flex items-center gap-3 rounded-xl bg-amber-50 p-4 ring-1 ring-amber-100">
+                <div className="h-3 w-3 animate-pulse rounded-full bg-amber-400" />
+                <div>
+                  <div className="text-sm font-semibold text-amber-800">Ricerca segnale GPS…</div>
+                  <div className="text-xs text-amber-600">Attendi la prima correzione di posizione</div>
+                </div>
+              </div>
+            )}
+
+            {geo.supported && !geo.error && gpsReady && geo.position && (
+              <div className="mb-4 rounded-xl bg-emerald-50 p-4 ring-1 ring-emerald-100">
+                <div className="mb-2 flex items-center gap-2">
+                  <div className="h-3 w-3 animate-pulse rounded-full bg-emerald-400" />
+                  <span className="text-sm font-semibold text-emerald-800">GPS attivo</span>
+                  {geo.mode === 'power-save' && (
+                    <span className="ml-auto rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                      🔋 risparmio energetico
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-1 font-mono text-xs text-emerald-700">
+                  <span className="text-emerald-500">Lat</span>
+                  <span>{geo.position.lat.toFixed(6)}</span>
+                  <span className="text-emerald-500">Lng</span>
+                  <span>{geo.position.lng.toFixed(6)}</span>
+                  {geo.accuracy !== null && (
+                    <>
+                      <span className="text-emerald-500">Precisione</span>
+                      <span>±{geo.accuracy} m</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {bufferedCount > 0 && (
+              <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 ring-1 ring-amber-100">
+                <span className="text-base">📡</span>
+                <div>
+                  <div className="text-xs font-semibold text-amber-800">Offline</div>
+                  <div className="text-xs text-amber-600">
+                    {bufferedCount}{' '}
+                    {bufferedCount === 1 ? 'posizione in coda' : 'posizioni in coda'} — invio al
+                    ripristino
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         <button

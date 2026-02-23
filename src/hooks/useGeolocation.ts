@@ -66,7 +66,7 @@ const LOW_BATTERY_LEVEL = 0.2
  *                       or immediately when battery < LOW_BATTERY_LEVEL (and not charging)
  *   power-save → high   on first position update with ≥ MOVEMENT_KM displacement
  */
-export function useGeolocation(): GeoState {
+export function useGeolocation(enabled = true): GeoState {
   const supported = typeof navigator !== 'undefined' && 'geolocation' in navigator
 
   const [mode, setMode] = useState<GeoMode>('high')
@@ -84,9 +84,9 @@ export function useGeolocation(): GeoState {
   const lastMovedRef = useRef<number>(Date.now())
   const stationaryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // ── Effect 1: GPS watch — restarts whenever mode changes ────────────────────
+  // ── Effect 1: GPS watch — restarts whenever mode or enabled changes ─────────
   useEffect(() => {
-    if (!supported) return
+    if (!supported || !enabled) return
 
     const opts = mode === 'high' ? HIGH_ACCURACY : POWER_SAVE
     setState((s) => ({ ...s, watching: true, error: null, mode }))
@@ -125,7 +125,7 @@ export function useGeolocation(): GeoState {
       navigator.geolocation.clearWatch(watchId)
       setState((s) => ({ ...s, watching: false }))
     }
-  }, [supported, mode])
+  }, [supported, mode, enabled])
 
   // ── Effect 2: adaptive mode based on movement ────────────────────────────────
   useEffect(() => {

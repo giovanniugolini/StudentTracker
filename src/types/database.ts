@@ -247,6 +247,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cleanup_old_positions: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      delete_trip_positions: {
+        Args: { p_trip_id: string }
+        Returns: undefined
+      }
       get_student_by_token: {
         Args: { p_token: string }
         Returns: Json
@@ -390,11 +398,11 @@ export const Constants = {
   },
 } as const
 
-// ─── Convenience type aliases ────────────────────────────────────────────────
+
+// ─── Convenience aliases used throughout the app ──────────────────────────────
 export type Teacher  = Database['public']['Tables']['teachers']['Row']
 export type Trip     = Database['public']['Tables']['trips']['Row']
 export type Student  = Database['public']['Tables']['students']['Row']
 export type Position = Database['public']['Tables']['positions']['Row']
 export type Alert    = Database['public']['Tables']['alerts']['Row']
 export type TripStatus = Database['public']['Enums']['trip_status']
-export type AlertType  = Database['public']['Enums']['alert_type']
