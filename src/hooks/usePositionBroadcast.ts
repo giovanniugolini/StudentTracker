@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import type { LatLng } from '@/lib/geo'
+import { bufferPosition, flushBuffer, countBuffered } from '@/lib/positionBuffer'
 
 const DB_WRITE_INTERVAL_MS = 30_000
 
@@ -20,13 +21,13 @@ export interface PositionPayload {
 /**
  * Student side.
  *
- * Effect 1 — creates the Realtime channel ONCE when studentId/tripId are
- *   available, subscribes, stores a ref. Cleaned up on unmount.
+ * Effect 1 — creates the Realtime channel ONCE, subscribes.
+ * Effect 2 — broadcasts position on every update (skipped while offline).
+ * Effect 3 — DB persistence: online → rate-limited RPC; offline → IndexedDB buffer.
+ * Effect 4 — on reconnection, flush buffered positions via RPC.
+ * Effect 5 — online/offline state tracking.
  *
- * Effect 2 — whenever position changes, sends a broadcast on the already-open
- *   channel (no subscribe/unsubscribe on every tick).
- *
- * Effect 3 — DB persistence rate-limited to once per DB_WRITE_INTERVAL_MS.
+ * Returns bufferedCount so the UI can warn the user.
  */
 export function usePositionBroadcast({
   studentId,
@@ -40,11 +41,15 @@ export function usePositionBroadcast({
   position: LatLng | null
   accuracy: number | null
   batteryLevel?: number | null
-}) {
+}): { bufferedCount: number } {
   const channelRef = useRef<RealtimeChannel | null>(null)
   const subscribedRef = useRef(false)
   const pendingRef = useRef<PositionPayload | null>(null)
   const lastDbWrite = useRef<number>(0)
+
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine)
+  const [bufferedCount, setBufferedCount] = useState(0)
+  const prevOnlineRef = useRef(navigator.onLine)
 
   // ── Effect 1: open channel once ─────────────────────────────────────────────
   useEffect(() => {
@@ -56,7 +61,6 @@ export function usePositionBroadcast({
 
     channel.subscribe((status) => {
       subscribedRef.current = status === 'SUBSCRIBED'
-      // Flush any position that arrived before the channel was ready
       if (status === 'SUBSCRIBED' && pendingRef.current) {
         channel.send({ type: 'broadcast', event: 'position', payload: pendingRef.current })
         pendingRef.current = null
@@ -73,9 +77,9 @@ export function usePositionBroadcast({
     }
   }, [studentId, tripId])
 
-  // ── Effect 2: send on every position update ─────────────────────────────────
+  // ── Effect 2: broadcast on every position update (online only) ──────────────
   useEffect(() => {
-    if (!position) return
+    if (!position || !isOnline) return
 
     const payload: PositionPayload = {
       student_id: studentId,
@@ -88,12 +92,11 @@ export function usePositionBroadcast({
     if (channelRef.current && subscribedRef.current) {
       channelRef.current.send({ type: 'broadcast', event: 'position', payload })
     } else {
-      // Channel not ready yet — buffer the latest position
       pendingRef.current = payload
     }
-  }, [studentId, position, accuracy, batteryLevel])
+  }, [studentId, position, accuracy, batteryLevel, isOnline])
 
-  // ── Effect 3: DB persistence (rate-limited) ─────────────────────────────────
+  // ── Effect 3: DB persistence ─────────────────────────────────────────────────
   useEffect(() => {
     if (!position) return
 
@@ -101,6 +104,21 @@ export function usePositionBroadcast({
     if (now - lastDbWrite.current < DB_WRITE_INTERVAL_MS) return
     lastDbWrite.current = now
 
+    if (!isOnline) {
+      // Offline: buffer to IndexedDB
+      bufferPosition({
+        student_id: studentId,
+        trip_id: tripId,
+        lat: position.lat,
+        lng: position.lng,
+        accuracy,
+        battery_level: batteryLevel ?? null,
+        recorded_at: new Date().toISOString(),
+      }).then(() => setBufferedCount((c) => c + 1))
+      return
+    }
+
+    // Online: write to DB
     supabase
       .rpc('upsert_position', {
         p_student_id: studentId,
@@ -113,5 +131,47 @@ export function usePositionBroadcast({
       .then(({ error }) => {
         if (error) console.warn('[usePositionBroadcast] DB write failed:', error.message)
       })
-  }, [studentId, tripId, position, accuracy, batteryLevel])
+  }, [studentId, tripId, position, accuracy, batteryLevel, isOnline])
+
+  // ── Effect 4: flush buffer when back online ──────────────────────────────────
+  useEffect(() => {
+    const wasOffline = !prevOnlineRef.current
+    prevOnlineRef.current = isOnline
+
+    if (!isOnline || !wasOffline || !studentId || !tripId) return
+
+    flushBuffer(async (pos) => {
+      const { error } = await supabase.rpc('upsert_position', {
+        p_student_id: pos.student_id,
+        p_trip_id: pos.trip_id,
+        p_lat: pos.lat,
+        p_lng: pos.lng,
+        p_accuracy: pos.accuracy ?? undefined,
+        p_battery: pos.battery_level ?? undefined,
+      })
+      if (error) throw new Error(error.message)
+    }).then(({ sent, remaining }) => {
+      console.info(`[offline-buffer] flushed ${sent}, remaining ${remaining}`)
+      setBufferedCount(remaining)
+    })
+  }, [isOnline, studentId, tripId])
+
+  // ── Effect 5: online/offline listeners ──────────────────────────────────────
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
+  // ── Init: load existing buffer count from previous session ───────────────────
+  useEffect(() => {
+    countBuffered().then(setBufferedCount)
+  }, [])
+
+  return { bufferedCount }
 }

@@ -7,7 +7,7 @@ export default function StudentPage() {
   const { session, leave } = useStudentStore()
   const geo = useGeolocation()
 
-  usePositionBroadcast({
+  const { bufferedCount } = usePositionBroadcast({
     studentId: session?.student.id ?? '',
     tripId: session?.trip.id ?? '',
     position: geo.position,
@@ -80,10 +80,15 @@ export default function StudentPage() {
         )}
 
         {geo.supported && !geo.error && gpsReady && geo.position && (
-          <div className="mb-6 rounded-xl bg-emerald-50 p-4 ring-1 ring-emerald-100">
+          <div className="mb-4 rounded-xl bg-emerald-50 p-4 ring-1 ring-emerald-100">
             <div className="mb-2 flex items-center gap-2">
               <div className="h-3 w-3 animate-pulse rounded-full bg-emerald-400" />
               <span className="text-sm font-semibold text-emerald-800">GPS attivo</span>
+              {geo.mode === 'power-save' && (
+                <span className="ml-auto rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                  🔋 risparmio energetico
+                </span>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-1 font-mono text-xs text-emerald-700">
               <span className="text-emerald-500">Lat</span>
@@ -96,6 +101,19 @@ export default function StudentPage() {
                   <span>±{geo.accuracy} m</span>
                 </>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Offline buffer indicator */}
+        {bufferedCount > 0 && (
+          <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 ring-1 ring-amber-100">
+            <span className="text-base">📡</span>
+            <div>
+              <div className="text-xs font-semibold text-amber-800">Offline</div>
+              <div className="text-xs text-amber-600">
+                {bufferedCount} {bufferedCount === 1 ? 'posizione in coda' : 'posizioni in coda'} — invio al ripristino
+              </div>
             </div>
           </div>
         )}
