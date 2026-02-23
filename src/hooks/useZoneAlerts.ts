@@ -6,26 +6,25 @@ import type { LivePositionMap } from './useTripPositions'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface ZoneAlert {
-  /** Student id (used as key) */
   id: string
   name: string
   distanceKm: number
   triggeredAt: Date
 }
 
-export interface AlertLogEntry extends ZoneAlert {
-  type: 'exit' | 'return'
-}
+export type AlertLogEntry =
+  | { type: 'exit' | 'return'; id: string; name: string; distanceKm: number; triggeredAt: Date }
+  | { type: 'radius_change'; oldRadius: number; newRadius: number; triggeredAt: Date }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 /**
  * Monitors live positions against the safe-zone radius.
  *
- * - Generates an alert the first time a student moves outside radiusKm.
- * - Auto-dismisses the alert when they return inside.
- * - Keeps a full chronological log (exit + return events).
- * - dismissAlert() lets the teacher manually hide a banner mid-absence.
+ * Log events:
+ *   'exit'         — student moved outside radiusKm
+ *   'return'       — student came back inside
+ *   'radius_change'— teacher changed the safe-zone radius
  */
 export function useZoneAlerts({
   students,
@@ -41,9 +40,21 @@ export function useZoneAlerts({
   const [activeAlerts, setActiveAlerts] = useState<ZoneAlert[]>([])
   const [alertLog, setAlertLog] = useState<AlertLogEntry[]>([])
 
-  // Track which students are currently outside — avoids re-firing on every render
   const outsideRef = useRef<Set<string>>(new Set())
+  const prevRadiusRef = useRef<number | null>(null)
 
+  // ── Track radius changes ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (prevRadiusRef.current !== null && prevRadiusRef.current !== radiusKm) {
+      setAlertLog((prev) => [
+        { type: 'radius_change', oldRadius: prevRadiusRef.current!, newRadius: radiusKm, triggeredAt: new Date() },
+        ...prev,
+      ])
+    }
+    prevRadiusRef.current = radiusKm
+  }, [radiusKm])
+
+  // ── Track position changes ──────────────────────────────────────────────────
   useEffect(() => {
     students.forEach((s) => {
       const pos = positions[s.id]
@@ -54,24 +65,21 @@ export function useZoneAlerts({
       const wasOutside = outsideRef.current.has(s.id)
 
       if (isOutside && !wasOutside) {
-        // Transition: inside → outside
         outsideRef.current.add(s.id)
         const alert: ZoneAlert = { id: s.id, name: s.name, distanceKm: dist, triggeredAt: new Date() }
         setActiveAlerts((prev) => [...prev.filter((a) => a.id !== s.id), alert])
-        setAlertLog((prev) => [{ ...alert, type: 'exit' }, ...prev])
+        setAlertLog((prev) => [{ type: 'exit', ...alert }, ...prev])
       } else if (!isOutside && wasOutside) {
-        // Transition: outside → inside
         outsideRef.current.delete(s.id)
         setActiveAlerts((prev) => prev.filter((a) => a.id !== s.id))
         setAlertLog((prev) => [
-          { id: s.id, name: s.name, distanceKm: dist, triggeredAt: new Date(), type: 'return' },
+          { type: 'return', id: s.id, name: s.name, distanceKm: dist, triggeredAt: new Date() },
           ...prev,
         ])
       }
     })
   }, [students, positions, teacherPos, radiusKm])
 
-  /** Manually hide an active alert (student stays outside, teacher acknowledged). */
   const dismissAlert = (studentId: string) => {
     setActiveAlerts((prev) => prev.filter((a) => a.id !== studentId))
   }

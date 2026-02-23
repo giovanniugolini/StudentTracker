@@ -109,31 +109,47 @@ function AlertLogPanel({ log }: { log: AlertLogEntry[] }) {
   }
   return (
     <div className="space-y-2">
-      {log.map((entry, i) => (
-        <div
-          key={i}
-          className={`flex items-start gap-3 rounded-xl px-4 py-3 ring-1 ${
-            entry.type === 'exit'
-              ? 'bg-red-50 ring-red-200'
-              : 'bg-emerald-50 ring-emerald-200'
-          }`}
-        >
-          <span className="mt-0.5 text-base">{entry.type === 'exit' ? '🚨' : '✅'}</span>
-          <div className="flex-1 min-w-0">
-            <div className={`text-sm font-semibold ${entry.type === 'exit' ? 'text-red-800' : 'text-emerald-800'}`}>
-              {entry.name}
+      {log.map((entry, i) => {
+        if (entry.type === 'radius_change') {
+          return (
+            <div key={i} className="flex items-start gap-3 rounded-xl bg-blue-50 px-4 py-3 ring-1 ring-blue-200">
+              <span className="mt-0.5 text-base">📏</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-blue-800">Raggio modificato</div>
+                <div className="text-xs text-blue-600">
+                  {entry.oldRadius} km → <strong>{entry.newRadius} km</strong>
+                </div>
+              </div>
+              <div className="text-xs text-slate-400 flex-shrink-0">
+                {entry.triggeredAt.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </div>
             </div>
-            <div className={`text-xs ${entry.type === 'exit' ? 'text-red-600' : 'text-emerald-600'}`}>
-              {entry.type === 'exit'
-                ? `Uscita zona — ${(entry.distanceKm * 1000).toFixed(0)} m dal docente`
-                : `Rientro in zona`}
+          )
+        }
+        return (
+          <div
+            key={i}
+            className={`flex items-start gap-3 rounded-xl px-4 py-3 ring-1 ${
+              entry.type === 'exit' ? 'bg-red-50 ring-red-200' : 'bg-emerald-50 ring-emerald-200'
+            }`}
+          >
+            <span className="mt-0.5 text-base">{entry.type === 'exit' ? '🚨' : '✅'}</span>
+            <div className="flex-1 min-w-0">
+              <div className={`text-sm font-semibold ${entry.type === 'exit' ? 'text-red-800' : 'text-emerald-800'}`}>
+                {entry.name}
+              </div>
+              <div className={`text-xs ${entry.type === 'exit' ? 'text-red-600' : 'text-emerald-600'}`}>
+                {entry.type === 'exit'
+                  ? `Uscita zona — ${(entry.distanceKm * 1000).toFixed(0)} m dal docente`
+                  : `Rientro in zona`}
+              </div>
+            </div>
+            <div className="text-xs text-slate-400 flex-shrink-0">
+              {entry.triggeredAt.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
             </div>
           </div>
-          <div className="text-xs text-slate-400 flex-shrink-0">
-            {entry.triggeredAt.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-          </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
