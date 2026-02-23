@@ -4,6 +4,7 @@ import { useTrips, validateTrip, STATUS_LABELS, STATUS_COLORS } from '@/hooks/us
 import { useStudents } from '@/hooks/useStudents'
 import { useTripPositions } from '@/hooks/useTripPositions'
 import { useGeolocation } from '@/hooks/useGeolocation'
+import { useZoneAlerts } from '@/hooks/useZoneAlerts'
 import CsvImport from '@/components/CsvImport'
 import QrCodeModal from '@/components/QrCodeModal'
 import TripMap from '@/components/TripMap'
@@ -14,8 +15,10 @@ import type { StudentFormData } from '@/hooks/useStudents'
 import { EMPTY_STUDENT_FORM } from '@/hooks/useStudents'
 import type { TripStatus } from '@/types/database'
 import type { GeoState } from '@/hooks/useGeolocation'
+import type { ZoneAlert, AlertLogEntry } from '@/hooks/useZoneAlerts'
+import { haversineKm } from '@/lib/geo'
 
-type PanelTab = 'students' | 'map'
+type PanelTab = 'students' | 'map' | 'log'
 
 // ─── Teacher GPS status bar ────────────────────────────────────────────────────
 
@@ -57,6 +60,80 @@ function TeacherGpsBar({ geo }: { geo: GeoState }) {
       {geo.accuracy !== null && (
         <span className="ml-auto text-emerald-500">±{geo.accuracy} m</span>
       )}
+    </div>
+  )
+}
+
+// ─── Alert Banner ─────────────────────────────────────────────────────────────
+
+function AlertBanner({ alerts, onDismiss }: { alerts: ZoneAlert[]; onDismiss: (id: string) => void }) {
+  if (alerts.length === 0) return null
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-3 z-[500] flex flex-col items-center gap-2 px-4">
+      {alerts.map((a) => (
+        <div
+          key={a.id}
+          className="pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-xl border border-red-300 bg-gradient-to-r from-red-50 to-rose-50 px-4 py-3 shadow-lg"
+        >
+          <span className="text-xl">🚨</span>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-bold uppercase tracking-wide text-red-800">Allerta</div>
+            <div className="truncate text-sm text-red-700">
+              <strong>{a.name}</strong> si è allontanato/a!{' '}
+              <span className="font-mono">{(a.distanceKm * 1000).toFixed(0)} m</span>
+            </div>
+          </div>
+          <button
+            onClick={() => onDismiss(a.id)}
+            className="text-red-400 hover:text-red-600 transition-colors p-1"
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ─── Alert Log Panel ──────────────────────────────────────────────────────────
+
+function AlertLogPanel({ log }: { log: AlertLogEntry[] }) {
+  if (log.length === 0) {
+    return (
+      <div className="py-12 text-center">
+        <div className="text-4xl">📋</div>
+        <p className="mt-2 text-sm font-medium text-slate-500">Nessun evento</p>
+        <p className="mt-1 text-xs text-slate-400">Gli avvisi di zona appariranno qui</p>
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-2">
+      {log.map((entry, i) => (
+        <div
+          key={i}
+          className={`flex items-start gap-3 rounded-xl px-4 py-3 ring-1 ${
+            entry.type === 'exit'
+              ? 'bg-red-50 ring-red-200'
+              : 'bg-emerald-50 ring-emerald-200'
+          }`}
+        >
+          <span className="mt-0.5 text-base">{entry.type === 'exit' ? '🚨' : '✅'}</span>
+          <div className="flex-1 min-w-0">
+            <div className={`text-sm font-semibold ${entry.type === 'exit' ? 'text-red-800' : 'text-emerald-800'}`}>
+              {entry.name}
+            </div>
+            <div className={`text-xs ${entry.type === 'exit' ? 'text-red-600' : 'text-emerald-600'}`}>
+              {entry.type === 'exit'
+                ? `Uscita zona — ${(entry.distanceKm * 1000).toFixed(0)} m dal docente`
+                : `Rientro in zona`}
+            </div>
+          </div>
+          <div className="text-xs text-slate-400 flex-shrink-0">
+            {entry.triggeredAt.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -216,28 +293,46 @@ function StudentForm({
 
 // ─── Student Row ──────────────────────────────────────────────────────────────
 
-function StudentRow({ student, onDelete, onEdit, onQr }: {
+function StudentRow({ student, onDelete, onEdit, onQr, distanceKm, isOutside }: {
   student: { id: string; name: string; phone: string | null; consent_signed: boolean; token: string }
   onDelete: (id: string) => void
   onEdit: (id: string) => void
   onQr: (id: string) => void
+  distanceKm?: number
+  isOutside?: boolean
 }) {
   const magicLink = `${window.location.origin}/join/${student.token}`
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white px-4 py-3">
-      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-600">
+    <div className={`flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors ${
+      isOutside ? 'border-red-200 bg-red-50' : 'border-slate-100 bg-white'
+    }`}>
+      <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold ${
+        isOutside ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
+      }`}>
         {student.name.charAt(0).toUpperCase()}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-semibold text-slate-800">{student.name}</span>
           {student.consent_signed && (
             <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
               consenso ✓
             </span>
           )}
+          {isOutside && (
+            <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 animate-pulse">
+              ⚠ fuori zona
+            </span>
+          )}
         </div>
-        {student.phone && <div className="text-xs text-slate-400">{student.phone}</div>}
+        <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
+          {student.phone && <span>{student.phone}</span>}
+          {distanceKm !== undefined && (
+            <span className={isOutside ? 'font-semibold text-red-500' : 'text-emerald-600'}>
+              {isOutside ? '↗' : '●'} {(distanceKm * 1000).toFixed(0)} m
+            </span>
+          )}
+        </div>
       </div>
       <div className="flex gap-1">
         <button onClick={() => onQr(student.id)} title="QR code"
@@ -307,6 +402,17 @@ export default function DashboardPage() {
   // Teacher's real GPS position (T2.7)
   const teacherGeo = useGeolocation()
 
+  // Teacher position: real GPS if available, fallback to Rome for initial render
+  const teacherPos = teacherGeo.position ?? { lat: 41.9028, lng: 12.4964 }
+
+  // Zone alerts (T3.1)
+  const { activeAlerts, alertLog, dismissAlert } = useZoneAlerts({
+    students,
+    positions: livePositions,
+    teacherPos,
+    radiusKm: syncedTrip?.radius_km ?? 0.5,
+  })
+
   const handleCreateTrip = async (data: TripFormData) => {
     const trip = await createTrip(data)
     setShowTripForm(false)
@@ -365,8 +471,11 @@ export default function DashboardPage() {
       battery_level: livePositions[s.id].battery_level,
     }))
 
-  // Teacher position: real GPS if available, fallback to Rome for initial render
-  const teacherPos = teacherGeo.position ?? { lat: 41.9028, lng: 12.4964 }
+  // Counts for header badges
+  const onlineCount = mapStudents.length
+  const outsideCount = mapStudents.filter(
+    (s) => haversineKm(teacherPos.lat, teacherPos.lng, s.position.lat, s.position.lng) > (syncedTrip?.radius_km ?? 0.5),
+  ).length
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -388,6 +497,19 @@ export default function DashboardPage() {
           <div className="flex-1">
             <h1 className="text-base font-bold text-slate-800">Student Tracker</h1>
             <p className="text-xs text-slate-400">{teacher?.name ?? teacher?.email}</p>
+          </div>
+          {/* Live status badges */}
+          <div className="flex items-center gap-2">
+            {onlineCount > 0 && (
+              <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                ● {onlineCount} online
+              </span>
+            )}
+            {outsideCount > 0 && (
+              <span className="animate-pulse rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700">
+                ⚠ {outsideCount} fuori zona
+              </span>
+            )}
           </div>
           <button onClick={signOut}
             className="rounded-lg px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-100">
@@ -560,6 +682,21 @@ export default function DashboardPage() {
                       </span>
                     )}
                   </button>
+                  <button
+                    onClick={() => setPanelTab('log')}
+                    className={`flex-1 rounded-md py-1.5 text-xs font-semibold transition ${
+                      panelTab === 'log'
+                        ? 'bg-white text-slate-800 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    📋 Log
+                    {alertLog.length > 0 && (
+                      <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] text-white ${outsideCount > 0 ? 'bg-red-500 animate-pulse' : 'bg-slate-400'}`}>
+                        {alertLog.length}
+                      </span>
+                    )}
+                  </button>
                 </div>
 
                 {panelTab === 'students' && (
@@ -607,13 +744,21 @@ export default function DashboardPage() {
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        {students.map((s) => (
-                          <StudentRow key={s.id} student={s}
-                            onDelete={handleDeleteStudent}
-                            onEdit={setEditingStudentId}
-                            onQr={setQrStudentId}
-                          />
-                        ))}
+                        {students.map((s) => {
+                          const pos = livePositions[s.id]
+                          const distKm = pos
+                            ? haversineKm(teacherPos.lat, teacherPos.lng, pos.lat, pos.lng)
+                            : undefined
+                          return (
+                            <StudentRow key={s.id} student={s}
+                              onDelete={handleDeleteStudent}
+                              onEdit={setEditingStudentId}
+                              onQr={setQrStudentId}
+                              distanceKm={distKm}
+                              isOutside={distKm !== undefined && distKm > syncedTrip.radius_km}
+                            />
+                          )
+                        })}
                       </div>
                     )}
                   </>
@@ -630,6 +775,7 @@ export default function DashboardPage() {
                           In attesa delle posizioni GPS degli studenti…
                         </div>
                       )}
+                      <AlertBanner alerts={activeAlerts} onDismiss={dismissAlert} />
                       <TripMap
                         teacherPos={teacherPos}
                         radiusKm={syncedTrip.radius_km}
@@ -637,6 +783,10 @@ export default function DashboardPage() {
                       />
                     </div>
                   </div>
+                )}
+
+                {panelTab === 'log' && (
+                  <AlertLogPanel log={alertLog} />
                 )}
               </div>
             )}

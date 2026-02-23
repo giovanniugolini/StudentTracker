@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, useMap } from 'react-leaflet'
 import { fixLeafletIcons, teacherIcon, studentIcon } from '@/lib/mapIcons'
 import { haversineKm } from '@/lib/geo'
 import type { LatLng } from '@/lib/geo'
@@ -100,6 +100,22 @@ export default function TripMap({ teacherPos, radiusKm, students, className = ''
           Centro zona sicura · raggio {radiusKm} km
         </Popup>
       </Marker>
+
+      {/* Dashed lines from teacher to outside students */}
+      {students.map((s) => {
+        const dist = haversineKm(teacherPos.lat, teacherPos.lng, s.position.lat, s.position.lng)
+        if (dist <= radiusKm) return null
+        return (
+          <Polyline
+            key={`line-${s.id}`}
+            positions={[
+              [teacherPos.lat, teacherPos.lng],
+              [s.position.lat, s.position.lng],
+            ]}
+            pathOptions={{ color: '#ef4444', weight: 1.5, dashArray: '6 4', opacity: 0.6 }}
+          />
+        )
+      })}
 
       {/* Student markers */}
       {students.map((s, idx) => {
