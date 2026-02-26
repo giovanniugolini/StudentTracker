@@ -18,6 +18,7 @@ import type { GeoState } from '@/hooks/useGeolocation'
 import type { ZoneAlert, AlertLogEntry } from '@/hooks/useZoneAlerts'
 import { haversineKm } from '@/lib/geo'
 import { supabase } from '@/lib/supabase'
+import { useRollCall } from '@/hooks/useRollCall'
 
 type PanelTab = 'students' | 'map' | 'log'
 
@@ -422,6 +423,82 @@ function ConsentBar({ signed, total }: { signed: number; total: number }) {
   )
 }
 
+// ─── Roll Call Panel ──────────────────────────────────────────────────────────
+
+function RollCallPanel({
+  students,
+  respondedIds,
+  timeLeft,
+  timeoutSeconds,
+  onClose,
+}: {
+  students: { id: string; name: string }[]
+  respondedIds: Set<string>
+  timeLeft: number
+  timeoutSeconds: number
+  onClose: () => void
+}) {
+  const responded = students.filter((s) => respondedIds.has(s.id))
+  const pending   = students.filter((s) => !respondedIds.has(s.id))
+  const pct       = Math.round((timeLeft / timeoutSeconds) * 100)
+  const mins      = String(Math.floor(timeLeft / 60)).padStart(2, '0')
+  const secs      = String(timeLeft % 60).padStart(2, '0')
+  const urgent    = timeLeft <= 15
+
+  return (
+    <div className="mb-4 rounded-xl bg-amber-50 p-4 ring-1 ring-amber-200">
+      {/* Header */}
+      <div className="mb-3 flex items-center gap-3">
+        <span className="text-lg">✋</span>
+        <div className="flex-1">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-bold text-amber-900">Appello in corso</span>
+            <span className={`font-mono text-sm font-bold tabular-nums ${urgent ? 'animate-pulse text-red-600' : 'text-amber-700'}`}>
+              {mins}:{secs}
+            </span>
+          </div>
+          {/* Progress bar */}
+          <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-amber-200">
+            <div
+              className={`h-full rounded-full transition-all duration-1000 ${urgent ? 'bg-red-500' : 'bg-amber-500'}`}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Counter + close */}
+      <div className="mb-3 flex items-center justify-between">
+        <span className="text-xs text-amber-700">
+          <strong>{responded.length}</strong> / {students.length} hanno risposto
+        </span>
+        <button
+          onClick={onClose}
+          className="rounded-lg bg-amber-200 px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-300"
+        >
+          Chiudi appello
+        </button>
+      </div>
+
+      {/* Student grid */}
+      <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+        {responded.map((s) => (
+          <div key={s.id} className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-1.5 ring-1 ring-emerald-200">
+            <span className="text-sm">✅</span>
+            <span className="truncate text-xs font-medium text-emerald-800">{s.name}</span>
+          </div>
+        ))}
+        {pending.map((s) => (
+          <div key={s.id} className="flex items-center gap-2 rounded-lg bg-white px-3 py-1.5 ring-1 ring-amber-200">
+            <span className="text-sm">⏳</span>
+            <span className="truncate text-xs text-slate-500">{s.name}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -437,6 +514,8 @@ export default function DashboardPage() {
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null)
   const [statusLoading, setStatusLoading] = useState(false)
   const [panelTab, setPanelTab] = useState<PanelTab>('students')
+  const [rollCallTimeout, setRollCallTimeout] = useState(60)
+  const [rollCallError, setRollCallError] = useState<string | null>(null)
 
   const { students, loading: studentsLoading, addStudent, updateStudent, removeStudent } =
     useStudents(selectedTrip?.id)
@@ -505,6 +584,28 @@ export default function DashboardPage() {
 
   // Real positions take priority; simulated fill in for students without GPS
   const effectivePositions = simulating ? { ...simPositions, ...livePositions } : livePositions
+
+  // Appello (T6.2)
+  const { rollCall, respondedIds, timeLeft, startRollCall, closeRollCall } =
+    useRollCall(syncedTrip?.id, teacher?.id ?? undefined)
+
+  // Broadcast posizione docente agli studenti ogni 15s (solo gita attiva)
+  const teacherPosRef = useRef(teacherPos)
+  teacherPosRef.current = teacherPos
+  useEffect(() => {
+    if (!syncedTrip?.id || syncedTrip.status !== 'active') return
+    const ch = supabase
+      .channel(`trip_teacher:${syncedTrip.id}`, { config: { broadcast: { ack: false } } })
+      .subscribe()
+    const send = () => ch.send({
+      type: 'broadcast',
+      event: 'teacher_position',
+      payload: { lat: teacherPosRef.current.lat, lng: teacherPosRef.current.lng },
+    })
+    send()
+    const id = setInterval(send, 15_000)
+    return () => { clearInterval(id); supabase.removeChannel(ch) }
+  }, [syncedTrip?.id, syncedTrip?.status])
 
   // Zone alerts (T3.1)
   const { activeAlerts, alertLog, dismissAlert } = useZoneAlerts({
@@ -810,8 +911,8 @@ export default function DashboardPage() {
 
                 {panelTab === 'students' && (
                   <>
-                    {/* Add student toolbar */}
-                    <div className="mb-4 flex gap-2">
+                    {/* Toolbar */}
+                    <div className="mb-4 flex flex-wrap gap-2">
                       <button onClick={() => setShowStudentForm(true)}
                         className="rounded-lg bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600">
                         + Studente
@@ -820,7 +921,51 @@ export default function DashboardPage() {
                         className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200">
                         📥 CSV
                       </button>
+
+                      {/* Appello — solo gita attiva con studenti */}
+                      {syncedTrip?.status === 'active' && students.length > 0 && !rollCall && (
+                        <div className="ml-auto flex items-center gap-1">
+                          <select
+                            value={rollCallTimeout}
+                            onChange={(e) => setRollCallTimeout(Number(e.target.value))}
+                            className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-600 outline-none focus:border-amber-400"
+                          >
+                            <option value={30}>30 s</option>
+                            <option value={60}>60 s</option>
+                            <option value={90}>90 s</option>
+                            <option value={120}>120 s</option>
+                          </select>
+                          <button
+                            onClick={async () => {
+                              setRollCallError(null)
+                              try { await startRollCall(rollCallTimeout) }
+                              catch (e) { setRollCallError(e instanceof Error ? e.message : 'Errore avvio appello') }
+                            }}
+                            className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600"
+                          >
+                            ✋ Appello
+                          </button>
+                        </div>
+                      )}
                     </div>
+
+                    {/* Errore appello */}
+                    {rollCallError && (
+                      <div className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600 ring-1 ring-red-200">
+                        ⚠ {rollCallError}
+                      </div>
+                    )}
+
+                    {/* Pannello appello attivo */}
+                    {rollCall && (
+                      <RollCallPanel
+                        students={students}
+                        respondedIds={respondedIds}
+                        timeLeft={timeLeft}
+                        timeoutSeconds={rollCall.timeout_seconds}
+                        onClose={closeRollCall}
+                      />
+                    )}
 
                     {/* Add/Edit student form */}
                     {(showStudentForm || editingStudentId) && (

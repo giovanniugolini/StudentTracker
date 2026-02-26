@@ -130,6 +130,84 @@ export type Database = {
           },
         ]
       }
+      roll_call_responses: {
+        Row: {
+          id: string
+          responded_at: string
+          roll_call_id: string
+          student_id: string
+        }
+        Insert: {
+          id?: string
+          responded_at?: string
+          roll_call_id: string
+          student_id: string
+        }
+        Update: {
+          id?: string
+          responded_at?: string
+          roll_call_id?: string
+          student_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roll_call_responses_roll_call_id_fkey"
+            columns: ["roll_call_id"]
+            isOneToOne: false
+            referencedRelation: "roll_calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roll_call_responses_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      roll_calls: {
+        Row: {
+          closed_at: string | null
+          id: string
+          started_at: string
+          teacher_id: string
+          timeout_seconds: number
+          trip_id: string
+        }
+        Insert: {
+          closed_at?: string | null
+          id?: string
+          started_at?: string
+          teacher_id: string
+          timeout_seconds?: number
+          trip_id: string
+        }
+        Update: {
+          closed_at?: string | null
+          id?: string
+          started_at?: string
+          teacher_id?: string
+          timeout_seconds?: number
+          trip_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roll_calls_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "teachers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roll_calls_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       students: {
         Row: {
           consent_signed: boolean
@@ -251,6 +329,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: number
       }
+      close_roll_call: {
+        Args: { p_roll_call_id: string }
+        Returns: undefined
+      }
       delete_trip_positions: {
         Args: { p_trip_id: string }
         Returns: undefined
@@ -258,6 +340,10 @@ export type Database = {
       get_student_by_token: {
         Args: { p_token: string }
         Returns: Json
+      }
+      respond_to_roll_call: {
+        Args: { p_roll_call_id: string; p_student_token: string }
+        Returns: undefined
       }
       upsert_position: {
         Args: {
@@ -399,10 +485,13 @@ export const Constants = {
 } as const
 
 
+
 // ─── Convenience aliases used throughout the app ──────────────────────────────
-export type Teacher  = Database['public']['Tables']['teachers']['Row']
-export type Trip     = Database['public']['Tables']['trips']['Row']
-export type Student  = Database['public']['Tables']['students']['Row']
-export type Position = Database['public']['Tables']['positions']['Row']
-export type Alert    = Database['public']['Tables']['alerts']['Row']
-export type TripStatus = Database['public']['Enums']['trip_status']
+export type Teacher          = Database['public']['Tables']['teachers']['Row']
+export type Trip             = Database['public']['Tables']['trips']['Row']
+export type Student          = Database['public']['Tables']['students']['Row']
+export type Position         = Database['public']['Tables']['positions']['Row']
+export type Alert            = Database['public']['Tables']['alerts']['Row']
+export type RollCall         = Database['public']['Tables']['roll_calls']['Row']
+export type RollCallResponse = Database['public']['Tables']['roll_call_responses']['Row']
+export type TripStatus       = Database['public']['Enums']['trip_status']

@@ -2,9 +2,10 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="6c0debea-3724-4e3d-bb82-94dd7109ad13" name="Changes" comment="Sprint 2">
-      <change beforePath="$PROJECT_DIR$/src/hooks/useGeolocation.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/hooks/useGeolocation.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/pages/DashboardPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/pages/DashboardPage.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/pages/StudentPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/pages/StudentPage.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/types/database.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/types/database.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -68,7 +69,8 @@
       <updated>1771712602702</updated>
       <workItem from="1771712603711" duration="8148000" />
       <workItem from="1771882758205" duration="296000" />
-      <workItem from="1771883239173" duration="3676000" />
+      <workItem from="1771883239173" duration="7614000" />
+      <workItem from="1771938841519" duration="135000" />
     </task>
     <task id="LOCAL-00001" summary="Sprint 2">
       <option name="closed" value="true" />

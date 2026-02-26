@@ -3,6 +3,7 @@ import { Navigate } from 'react-router'
 import { useStudentStore } from '@/stores/studentStore'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import { usePositionBroadcast } from '@/hooks/usePositionBroadcast'
+import { useStudentRollCall } from '@/hooks/useStudentRollCall'
 
 // ─── GDPR Consent Screen ───────────────────────────────────────────────────────
 
@@ -104,6 +105,11 @@ export default function StudentPage() {
     accuracy: consented ? geo.accuracy : null,
   })
 
+  const studentPos = geo.position ? { lat: geo.position.lat, lng: geo.position.lng } : null
+
+  const { activeRollCallId, timeLeft, responded, responding, respond, distanceKm } =
+    useStudentRollCall(session?.trip.id, session?.student.token, studentPos)
+
   if (!session) return <Navigate to="/login" replace />
 
   const { student, trip } = session
@@ -134,6 +140,67 @@ export default function StudentPage() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-slate-100 px-4">
+
+      {/* ── Appello overlay ── */}
+      {activeRollCallId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-2xl">
+            {responded ? (
+              /* Conferma risposta */
+              <div className="text-center">
+                <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 text-5xl">
+                  ✅
+                </div>
+                <h2 className="text-xl font-bold text-emerald-800">Presenza confermata</h2>
+                <p className="mt-2 text-sm text-slate-500">
+                  Il professore ha ricevuto la tua risposta.
+                </p>
+                <p className="mt-4 font-mono text-xs text-slate-400">
+                  Appello in chiusura in {timeLeft}s…
+                </p>
+              </div>
+            ) : (
+              /* Richiesta risposta */
+              <>
+                <div className="mb-6 text-center">
+                  <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 text-4xl">
+                    ✋
+                  </div>
+                  <h2 className="text-xl font-bold text-slate-800">Appello!</h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Il professore ha avviato un appello. Rispondi subito.
+                  </p>
+                </div>
+
+                {/* Countdown bar */}
+                <div className="mb-6">
+                  <div className="mb-1 flex justify-between text-xs text-slate-400">
+                    <span>Tempo rimanente</span>
+                    <span className={`font-mono font-bold tabular-nums ${timeLeft <= 10 ? 'animate-pulse text-red-600' : 'text-slate-600'}`}>
+                      {timeLeft}s
+                    </span>
+                  </div>
+                  <div className="h-3 w-full overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className={`h-full rounded-full transition-all duration-1000 ${timeLeft <= 10 ? 'bg-red-500' : 'bg-amber-400'}`}
+                      style={{ width: `${(timeLeft / 120) * 100}%` }}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  onClick={respond}
+                  disabled={responding}
+                  className="w-full rounded-2xl bg-emerald-500 py-4 text-lg font-bold text-white shadow-lg hover:bg-emerald-600 active:scale-95 disabled:opacity-60 transition-transform"
+                >
+                  {responding ? 'Invio…' : '✋ Sono presente!'}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-sm ring-1 ring-slate-200">
         {/* Header */}
         <div className="mb-6 text-center">
@@ -163,6 +230,35 @@ export default function StudentPage() {
             {new Date(trip.date_end).toLocaleDateString('it-IT')}
           </div>
         </div>
+
+        {/* Indicatore distanza dal docente */}
+        {distanceKm !== null && (() => {
+          const radiusKm = trip.radius_km
+          const outside = distanceKm > radiusKm
+          const meters = Math.round(distanceKm * 1000)
+          return (
+            <div className={`mb-6 rounded-xl p-4 ring-1 ${
+              outside
+                ? 'bg-red-50 ring-red-200'
+                : 'bg-emerald-50 ring-emerald-100'
+            }`}>
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">{outside ? '⚠️' : '✅'}</span>
+                <div>
+                  <div className={`text-sm font-bold ${outside ? 'text-red-700' : 'text-emerald-700'}`}>
+                    {outside ? 'Sei fuori dalla zona sicura' : 'Sei nella zona sicura'}
+                  </div>
+                  <div className={`text-xs mt-0.5 ${outside ? 'text-red-500' : 'text-emerald-600'}`}>
+                    {meters < 1000
+                      ? `${meters} m dal docente`
+                      : `${distanceKm.toFixed(1)} km dal docente`}
+                    {' · '}raggio {Math.round(radiusKm * 1000)} m
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
 
         {/* Declined consent notice */}
         {declined && !consented && (
