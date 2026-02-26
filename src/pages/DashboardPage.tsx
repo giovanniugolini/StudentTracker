@@ -516,6 +516,7 @@ export default function DashboardPage() {
   const [panelTab, setPanelTab] = useState<PanelTab>('students')
   const [rollCallTimeout, setRollCallTimeout] = useState(60)
   const [rollCallError, setRollCallError] = useState<string | null>(null)
+  const [paused, setPaused] = useState(false)
 
   const { students, loading: studentsLoading, addStudent, updateStudent, removeStudent } =
     useStudents(selectedTrip?.id)
@@ -523,11 +524,11 @@ export default function DashboardPage() {
   // Keep selectedTrip in sync when trips list updates
   const syncedTrip = trips.find((t) => t.id === selectedTrip?.id) ?? null
 
-  // Live GPS positions broadcast by students via Realtime
-  const livePositions = useTripPositions(syncedTrip?.id)
+  // Live GPS positions broadcast by students via Realtime (stopped when paused)
+  const livePositions = useTripPositions(paused ? undefined : syncedTrip?.id)
 
-  // Teacher's real GPS position (T2.7)
-  const teacherGeo = useGeolocation()
+  // Teacher's real GPS position — stopped when paused to save battery
+  const teacherGeo = useGeolocation(!paused)
 
   // Teacher position: real GPS if available, fallback to Rome for initial render
   const teacherPos = teacherGeo.position ?? { lat: 41.9028, lng: 12.4964 }
@@ -588,24 +589,6 @@ export default function DashboardPage() {
   // Appello (T6.2)
   const { rollCall, respondedIds, timeLeft, startRollCall, closeRollCall } =
     useRollCall(syncedTrip?.id, teacher?.id ?? undefined)
-
-  // Broadcast posizione docente agli studenti ogni 15s (solo gita attiva)
-  const teacherPosRef = useRef(teacherPos)
-  teacherPosRef.current = teacherPos
-  useEffect(() => {
-    if (!syncedTrip?.id || syncedTrip.status !== 'active') return
-    const ch = supabase
-      .channel(`trip_teacher:${syncedTrip.id}`, { config: { broadcast: { ack: false } } })
-      .subscribe()
-    const send = () => ch.send({
-      type: 'broadcast',
-      event: 'teacher_position',
-      payload: { lat: teacherPosRef.current.lat, lng: teacherPosRef.current.lng },
-    })
-    send()
-    const id = setInterval(send, 15_000)
-    return () => { clearInterval(id); supabase.removeChannel(ch) }
-  }, [syncedTrip?.id, syncedTrip?.status])
 
   // Zone alerts (T3.1)
   const { activeAlerts, alertLog, dismissAlert } = useZoneAlerts({
@@ -713,6 +696,17 @@ export default function DashboardPage() {
               </span>
             )}
           </div>
+          <button
+            onClick={() => setPaused((p) => !p)}
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+              paused
+                ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                : 'text-slate-500 hover:bg-slate-100'
+            }`}
+            title={paused ? 'Riprendi rilevamento' : 'Sospendi rilevamento'}
+          >
+            {paused ? '▶ Riprendi' : '⏸ Sospendi'}
+          </button>
           <button onClick={signOut}
             className="rounded-lg px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-100">
             Esci
@@ -861,6 +855,23 @@ export default function DashboardPage() {
                     </button>
                   </div>
                 </div>
+
+                {/* Pausa banner */}
+                {paused && (
+                  <div className="mb-4 flex items-center gap-3 rounded-xl bg-amber-50 px-4 py-3 ring-1 ring-amber-200">
+                    <span className="text-base">⏸</span>
+                    <div className="flex-1 text-xs text-amber-800">
+                      <span className="font-semibold">Rilevamento sospeso</span>
+                      {' — '}le posizioni degli studenti non vengono aggiornate
+                    </div>
+                    <button
+                      onClick={() => setPaused(false)}
+                      className="rounded-lg bg-amber-200 px-3 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-300"
+                    >
+                      Riprendi
+                    </button>
+                  </div>
+                )}
 
                 {/* Consent progress bar */}
                 {!studentsLoading && <ConsentBar signed={consentCount} total={students.length} />}

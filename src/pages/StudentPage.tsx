@@ -105,10 +105,8 @@ export default function StudentPage() {
     accuracy: consented ? geo.accuracy : null,
   })
 
-  const studentPos = geo.position ? { lat: geo.position.lat, lng: geo.position.lng } : null
-
-  const { activeRollCallId, timeLeft, responded, responding, respond, distanceKm } =
-    useStudentRollCall(session?.trip.id, session?.student.token, studentPos)
+  const { activeRollCallId, timeLeft, responded, responding, respond } =
+    useStudentRollCall(session?.trip.id, session?.student.token)
 
   if (!session) return <Navigate to="/login" replace />
 
@@ -230,35 +228,6 @@ export default function StudentPage() {
             {new Date(trip.date_end).toLocaleDateString('it-IT')}
           </div>
         </div>
-
-        {/* Indicatore distanza dal docente */}
-        {distanceKm !== null && (() => {
-          const radiusKm = trip.radius_km
-          const outside = distanceKm > radiusKm
-          const meters = Math.round(distanceKm * 1000)
-          return (
-            <div className={`mb-6 rounded-xl p-4 ring-1 ${
-              outside
-                ? 'bg-red-50 ring-red-200'
-                : 'bg-emerald-50 ring-emerald-100'
-            }`}>
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">{outside ? '⚠️' : '✅'}</span>
-                <div>
-                  <div className={`text-sm font-bold ${outside ? 'text-red-700' : 'text-emerald-700'}`}>
-                    {outside ? 'Sei fuori dalla zona sicura' : 'Sei nella zona sicura'}
-                  </div>
-                  <div className={`text-xs mt-0.5 ${outside ? 'text-red-500' : 'text-emerald-600'}`}>
-                    {meters < 1000
-                      ? `${meters} m dal docente`
-                      : `${distanceKm.toFixed(1)} km dal docente`}
-                    {' · '}raggio {Math.round(radiusKm * 1000)} m
-                  </div>
-                </div>
-              </div>
-            </div>
-          )
-        })()}
 
         {/* Declined consent notice */}
         {declined && !consented && (
